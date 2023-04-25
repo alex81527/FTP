@@ -16,8 +16,12 @@ function [y_noise, H] = GetTimeDomainSamples(Params)
                     [1:length(Params.Preamble)], :) + (Params.u'*H_k*Params.v).*Params.Preamble;
     end
     % Apply CFO
-    RandomStartPhase = exp(1j*2*pi*rand(1, Params.M));
-    y_cfo = y.*RandomStartPhase.*exp(1j*2*pi*Params.CFO/Params.Fs*[0:size(y,1)-1].'); 
+    if abs(Params.CFO)>0
+        RandomStartPhase = exp(1j*2*pi*rand(1, Params.M));
+        y_cfo = y.*RandomStartPhase.*exp(1j*2*pi*Params.CFO/Params.Fs*[0:size(y,1)-1].'); 
+    else
+        y_cfo = y;
+    end
     % Add noise
     for ii=1:Params.M
         y_noise(:,ii) = awgn(y_cfo(:,ii), Params.SNR, 'measured');
