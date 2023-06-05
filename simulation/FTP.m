@@ -56,29 +56,6 @@ else
     load("./data/v.mat");
     Params.PhasedArray = pa;
     Params.v = v;
-%     P_mk = P_mk.*exp(1j*2*pi*rand(1, 16));
-%     ToFs = sort(unique(PathToF(PathToF~=-1)));
-%     PathToF2 = -1*ones(size(PathToF));
-%     P_mk2 = -1*ones(size(P_mk));
-%     for ii=1:2
-%         idx = find(sum(PathToF==ToFs(ii))==1);
-%         PathToF2(ii, idx) = PathToF(PathToF==ToFs(ii));
-%         P_mk2(ii, idx) = P_mk(PathToF==ToFs(ii));
-%     end
-%     PathToF = PathToF2;
-%     P_mk = P_mk2;
-
-    %     idx = find(sum(test_pos2(1:2,:)~=-1)>=1);
-%     PathToF = test_pos2(1:2, idx(16+[1:16]));  
-%     P_mk = test_pks2(1:2, idx(16+[1:16]));
-%     Params.PhasedArray = pa;
-%     Params.v = sv(:,idx(16+[1:16]));
-%     Params.v = Params.v./abs(Params.v);
-    % save("./data/PathToF.mat", "PathToF");
-    % save("./data/P_mk.mat", "P_mk");
-    % save("./data/pa.mat", "pa");
-    % save("./data/v.mat", "v");
-    
     %%%%%%%%%%%% 4. Construct the Optimal Beam %%%%%%%%%%%%%%%%%%
     % Compressive Path Direction Estimation, Eqn. (11)
     [AoD] = CompressivePathDirectionEstimation(P_mk, PathToF, Params);
