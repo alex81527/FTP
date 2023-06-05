@@ -1,6 +1,7 @@
 close all; clear;
 %%%%%%%%%%%% 1. Simulation Parameters %%%%%%%%%%%%%%%%%%%%%%
 rng(1);
+Params.SIM = 0; % Set as zero to load experimental data 
 Params.SNR = 15;
 Params.Fc = 60.48e9; % 802.11ad SC PHY
 Params.Fs = 1.76e9; % 802.11ad SC PHY
@@ -8,7 +9,7 @@ Params.CFO = Params.Fc*12e-6; % 12 ppm CFO
 Params.N = 36; % 6x6 URA
 Params.M = round(3*log2(Params.N)); % number of TX probes
 Params.Lambda = physconst('LightSpeed')/Params.Fc;
-Params.PhaseQuantizeBit = 2;
+Params.PhaseQuantizeBit = 2; % 2-bit phase control and 1-bit amplitude control
 Params.PhasedArray = phased.URA('Size',sqrt(Params.N), 'ElementSpacing',Params.Lambda/2);
 Params.Beamwidth = beamwidth(Params.PhasedArray,Params.Fc);
 scaler = 2*pi/(2^Params.PhaseQuantizeBit);
@@ -26,22 +27,69 @@ Params.STF = dmgRotate([repmat(Ga128,16,1); -Ga128]);
 Params.CE = dmgRotate([Params.Gu;Params.Gv;-Gb128]);
 Params.Preamble = [Params.STF;Params.CE];
 
-%%%%%%%%%%%% 2. Generate Multipath Channel and Time-domain Samples %%%%%
-% y: Time-domain samples, H: Multipath channel
-[y, H] = GetTimeDomainSamples(Params);
+if Params.SIM ==1
+    %%%%%%%%%%%% 2. Generate Multipath Channel and Time-domain Samples %%%%
+    % y: Time-domain samples, H: Multipath channel
+    [y, H] = GetTimeDomainSamples(Params);
+    
+    %%%%%%%%%%%% 3. Extract Channel Impulse Response (CIR) %%%%%%%%%%%
+    % P_mk: peaks in the CIR, Eqn. (2)
+    [P_mk, PathToF] = GetChannelImpulseResponse(y, Params);
+    
+    %%%%%%%%%%%% 4. Construct the Optimal Beam %%%%%%%%%%%%%%%%%%
+    % Compressive Path Direction Estimation, Eqn. (11)
+    [AoD] = CompressivePathDirectionEstimation(P_mk, PathToF, Params);
+    % Relative Path Gain Estimation, Eqn. (14)
+    [RelativeGains] = GetRelativeGains(P_mk, PathToF, AoD, Params);
+    % Construct the Optimal Beam, Eqn. (15)
+    [v_star] = GetOptimalBeam(AoD, RelativeGains, Params);
+    
+    %%%%%%%%%%%% 5. Plotting Results %%%%%%%%%%%%%%%%%%%%%%%%
+    v_GroundTruthOptimal = normalize((Params.u'*H)', 'norm');
+    HelperPlotBeamPatterns([v_star v_GroundTruthOptimal], Params, ["FTP", "Global Optimum"]);
+else
+    %%%%%%%%%%%% 3. Extract Channel Impulse Response (CIR) %%%%%%%%%%%
+    % Load experimental data of 16 beam probes
+    load("./data/PathToF.mat");
+    load("./data/P_mk.mat");
+    load("./data/pa.mat");
+    load("./data/v.mat");
+    Params.PhasedArray = pa;
+    Params.v = v;
+%     P_mk = P_mk.*exp(1j*2*pi*rand(1, 16));
+%     ToFs = sort(unique(PathToF(PathToF~=-1)));
+%     PathToF2 = -1*ones(size(PathToF));
+%     P_mk2 = -1*ones(size(P_mk));
+%     for ii=1:2
+%         idx = find(sum(PathToF==ToFs(ii))==1);
+%         PathToF2(ii, idx) = PathToF(PathToF==ToFs(ii));
+%         P_mk2(ii, idx) = P_mk(PathToF==ToFs(ii));
+%     end
+%     PathToF = PathToF2;
+%     P_mk = P_mk2;
 
-%%%%%%%%%%%% 3. Extract Channel Impulse Response (CIR) %%%%%%%%%%%%
-% P_mk: peaks in the CIR, Eqn. (2)
-[P_mk, PathToF] = GetChannelImpulseResponse(y, Params);
-
-%%%%%%%%%%%% 4. Construct the Optimal Beam %%%%%%%%%%%%%%%%%%%
-% Compressive Path Direction Estimation, Eqn. (11)
-[AoD] = CompressivePathDirectionEstimation(P_mk, PathToF, Params);
-% Relative Path Gain Estimation, Eqn. (14)
-[RelativeGains] = GetRelativeGains(P_mk, PathToF, AoD, Params);
-% Construct the Optimal Beam, Eqn. (15)
-[v_star] = GetOptimalBeam(AoD, RelativeGains, Params);
-
-%%%%%%%%%%%% 5. Plotting Results %%%%%%%%%%%%%%%%%%%%%%%%%
-v_GroundTruthOptimal = normalize((Params.u'*H)', 'norm');
-HelperPlotBeamPatterns([v_star v_GroundTruthOptimal], Params, ["FTP", "Global Optimum"]);
+    %     idx = find(sum(test_pos2(1:2,:)~=-1)>=1);
+%     PathToF = test_pos2(1:2, idx(16+[1:16]));  
+%     P_mk = test_pks2(1:2, idx(16+[1:16]));
+%     Params.PhasedArray = pa;
+%     Params.v = sv(:,idx(16+[1:16]));
+%     Params.v = Params.v./abs(Params.v);
+    % save("./data/PathToF.mat", "PathToF");
+    % save("./data/P_mk.mat", "P_mk");
+    % save("./data/pa.mat", "pa");
+    % save("./data/v.mat", "v");
+    
+    %%%%%%%%%%%% 4. Construct the Optimal Beam %%%%%%%%%%%%%%%%%%
+    % Compressive Path Direction Estimation, Eqn. (11)
+    [AoD] = CompressivePathDirectionEstimation(P_mk, PathToF, Params);
+    % Relative Path Gain Estimation, Eqn. (14)
+    [RelativeGains] = GetRelativeGains(P_mk, PathToF, AoD, Params);
+    % Construct the Optimal Beam, Eqn. (15)
+    [v_star] = GetOptimalBeam(AoD, RelativeGains, Params);
+    % Quantization
+    v_star = QuantizePhase(v_star, 2);
+    %%%%%%%%%%%% 5. Plotting Results %%%%%%%%%%%%%%%%%%%%%%%%
+    load("./data/v_ACO.mat");
+    v_GroundTruthOptimal = QuantizePhase(v_ACO, 2);
+    HelperPlotBeamPatternsExpData([v_star v_GroundTruthOptimal], Params, ["FTP", "ACO"]);
+end
